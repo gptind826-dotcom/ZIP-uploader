@@ -8,6 +8,17 @@ Run: python main.py
 """
 
 import asyncio
+import sys
+
+# === FIX: Create event loop for Python 3.14 compatibility ===
+# This must run BEFORE any pyrogram imports
+if sys.version_info >= (3, 14):
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+# ============================================================
+
 import threading
 import logging
 
