@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Music Bot Dashboard</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  body { background:#0f0f13; color:#e8e8ee; }
+  .card { background:#1a1a22; border:none; }
+  .form-control, .form-select { background:#252530; border:#2d2d3a; color:#fff; }
+  .form-control:focus, .form-select:focus { background:#2a2a38; border-color:#6c63ff; color:#fff; box-shadow:0 0 0 .2rem rgba(108,99,255,.25); }
+  .btn-primary { background:#6c63ff; border:none; }
+  .btn-primary:hover { background:#5a52d5; }
+  .btn-danger { background:#ff4757; border:none; }
+  .btn-success { background:#2ed573; border:none; color:#000; }
+  .status-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; }
+  .status-on { background:#2ed573; }
+  .status-off { background:#ff4757; }
+  .queue-item { background:#252530; border-radius:6px; padding:8px 12px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }
+  .refresh-badge { font-size:.75rem; color:#888; }
+</style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg" style="background:#16161f;">
+  <div class="container">
+    <a class="navbar-brand text-white fw-bold" href="#">🎵 Music Bot Dashboard</a>
+    <div class="d-flex align-items-center gap-3">
+      <span class="refresh-badge">Auto-refresh: <span id="timer">3s</span></span>
+      <a href="/logout" class="btn btn-sm btn-outline-light">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-4">
+  <div class="row g-4">
+
+    <!-- Assistant -->
+    <div class="col-md-6">
+      <div class="card p-3">
+        <h5 class="mb-3">🤖 Assistant Account</h5>
+        <div class="mb-2">Status: <span id="asst-status"><span class="status-dot status-off"></span>Disconnected</span></div>
+        <form id="config-form" class="mb-3">
+          <input type="hidden" id="csrf" value="{{ csrf }}">
+          <div class="mb-2">
+            <label class="form-label small">API ID</label>
+            <input type="text" id="api_id" class="form-control form-control-sm">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">API HASH</label>
+            <input type="password" id="api_hash" class="form-control form-control-sm">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">SESSION STRING</label>
+            <input type="password" id="session_string" class="form-control form-control-sm">
+          </div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-success btn-sm" onclick="saveConfig()">Save Config</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="callApi('/api/assistant/connect','POST')">Connect</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="callApi('/api/assistant/disconnect','POST')">Disconnect</button>
+            <button type="button" class="btn btn-warning btn-sm" onclick="callApi('/api/assistant/restart','POST')">Restart</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Bot Controls -->
+    <div class="col-md-6">
+      <div class="card p-3">
+        <h5 class="mb-3">🎛️ Bot Controls</h5>
+        <div class="mb-3">
+          <label class="form-label small">Chat ID</label>
+          <input type="number" id="ctrl-chat-id" class="form-control form-control-sm" placeholder="-100...">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small">File Path / Title to Play</label>
+          <input type="text" id="ctrl-title" class="form-control form-control-sm" placeholder="Song title">
+          <input type="text" id="ctrl-file" class="form-control form-control-sm mt-1" placeholder="/path/to/file.raw">
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-success btn-sm" onclick="playTrack()">▶ Play</button>
+          <button class="btn btn-primary btn-sm" onclick="ctrlApi('/api/skip')">⏭ Skip</button>
+          <button class="btn btn-danger btn-sm" onclick="ctrlApi('/api/stop')">⏹ Stop</button>
+          <button class="btn btn-secondary btn-sm" onclick="ctrlApi('/api/pause')">⏸ Pause</button>
+          <button class="btn btn-secondary btn-sm" onclick="ctrlApi('/api/resume')">⏯ Resume</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Status -->
+    <div class="col-md-6">
+      <div class="card p-3">
+        <h5 class="mb-3">📡 Live Status</h5>
+        <div id="live-status">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Queue -->
+    <div class="col-md-6">
+      <div class="card p-3">
+        <h5 class="mb-3">📜 Queue</h5>
+        <div class="mb-2">
+          <label class="form-label small">Queue Chat ID</label>
+          <input type="number" id="queue-chat-id" class="form-control form-control-sm" placeholder="-100...">
+        </div>
+        <div id="queue-list" class="mb-2">No queue loaded.</div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-primary btn-sm" onclick="loadQueue()">Refresh Queue</button>
+          <button class="btn btn-danger btn-sm" onclick="clearQueue()">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="col-md-6">
+      <div class="card p-3">
+        <h5 class="mb-3">⚙️ Settings</h5>
+        <div class="mb-2">
+          <label class="form-label small">Chat ID</label>
+          <input type="number" id="set-chat-id" class="form-control form-control-sm" placeholder="-100...">
+        </div>
+        <div class="mb-2 d-flex align-items-center gap-2">
+          <input type="checkbox" id="set-loop" class="form-check-input">
+          <label class="form-check-label small">Loop Mode</label>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">Volume (1-100)</label>
+          <input type="number" id="set-vol" class="form-control form-control-sm" value="100" min="1" max="100">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
+      </div>
+    </div>
+
+  </div>
+  <div class="text-center mt-4 text-muted small">Developed by @EXUCODR</div>
+</div>
+
+<script>
+const csrf = document.getElementById('csrf').value;
+
+async function callApi(url, method='GET', body=null){
+  const opts = { method, headers: { 'X-CSRF-Token': csrf } };
+  if(body){ opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(body); }
+  try{ const r=await fetch(url,opts); const d=await r.json(); alert(JSON.stringify(d)); return d; }catch(e){ alert('Error: '+e); }
+}
+
+async function ctrlApi(url){
+  const chat_id = parseInt(document.getElementById('ctrl-chat-id').value || 0);
+  if(!chat_id){ alert('Enter Chat ID'); return; }
+  await callApi(url,'POST',{chat_id});
+}
+
+async function playTrack(){
+  const chat_id = parseInt(document.getElementById('ctrl-chat-id').value || 0);
+  const title = document.getElementById('ctrl-title').value;
+  const file_path = document.getElementById('ctrl-file').value;
+  if(!chat_id || !file_path){ alert('Chat ID and File Path required'); return; }
+  await callApi('/api/play','POST',{chat_id,title,file_path,requested_by:'admin'});
+}
+
+async function loadQueue(){
+  const chat_id = parseInt(document.getElementById('queue-chat-id').value || 0);
+  if(!chat_id){ alert('Enter Chat ID'); return; }
+  const d = await callApi('/api/queue/'+chat_id);
+  const list = document.getElementById('queue-list');
+  if(!d.queue || !d.queue.length){ list.innerHTML='<div class="text-muted">Queue empty.</div>'; return; }
+  list.innerHTML = d.queue.map((q,i)=>`
+    <div class="queue-item">
+      <div><strong>${i+1}.</strong> ${q.title} <small class="text-muted">by ${q.requested_by}</small></div>
+      <button class="btn btn-sm btn-outline-danger" onclick="removeQueue(${i})">×</button>
+    </div>`).join('');
+}
+
+async function clearQueue(){
+  const chat_id = parseInt(document.getElementById('queue-chat-id').value || 0);
+  if(!chat_id) return;
+  await callApi('/api/queue/clear','POST',{chat_id});
+  loadQueue();
+}
+
+async function removeQueue(index){
+  const chat_id = parseInt(document.getElementById('queue-chat-id').value || 0);
+  if(!chat_id) return;
+  await callApi('/api/queue/remove','POST',{chat_id,index});
+  loadQueue();
+}
+
+async function saveSettings(){
+  const chat_id = parseInt(document.getElementById('set-chat-id').value || 0);
+  const loop = document.getElementById('set-loop').checked;
+  const volume = parseInt(document.getElementById('set-vol').value || 100);
+  if(!chat_id){ alert('Enter Chat ID'); return; }
+  await callApi('/api/settings','POST',{chat_id,loop,volume});
+}
+
+async function saveConfig(){
+  const body = {
+    api_id: document.getElementById('api_id').value,
+    api_hash: document.getElementById('api_hash').value,
+    session_string: document.getElementById('session_string').value,
+  };
+  await callApi('/api/assistant/config','POST',body);
+}
+
+async function loadConfig(){
+  const d = await callApi('/api/assistant/config');
+  if(d.api_id) document.getElementById('api_id').value = d.api_id;
+  if(d.api_hash) document.getElementById('api_hash').value = d.api_hash;
+}
+
+async function loadStatus(){
+  const d = await callApi('/api/status');
+  const el = document.getElementById('live-status');
+  let html = '';
+  html += `<div class="mb-1">Assistant: ${d.assistant_connected?'<span class="status-dot status-on"></span>Connected':'<span class="status-dot status-off"></span>Disconnected'}</div>`;
+  html += `<div class="mb-1">Bot: ${d.bot_running?'<span class="status-dot status-on"></span>Running':'<span class="status-dot status-off"></span>Stopped'}</div>`;
+  html += `<div class="mb-1">Active Chats: ${d.active_chats.length}</div>`;
+  if(d.active_chats.length){
+    html += `<ul class="list-unstyled small mt-1">`;
+    for(const c of d.active_chats){
+      html += `<li>• ${c.chat_id} — <strong>${c.current_title||'-'}</strong></li>`;
+    }
+    html += `</ul>`;
+  }
+  el.innerHTML = html;
+}
+
+let seconds = 3;
+setInterval(()=>{
+  seconds--;
+  if(seconds<=0){ loadStatus(); seconds=3; }
+  document.getElementById('timer').innerText = seconds+'s';
+},1000);
+
+loadConfig();
+loadStatus();
+</script>
+</body>
+</html>
